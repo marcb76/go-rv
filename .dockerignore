@@ -1,0 +1,9 @@
+# Ignored files and directories by Docker: it will not be copied from host into the image
+.git
+.github
+assets/certs/
+*.exe
+*.out
+*.test
+README.pdf
+.DS_Store

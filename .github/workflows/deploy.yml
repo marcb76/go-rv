@@ -1,0 +1,72 @@
+name: CI/CD Pipeline - go-rv!
+
+# WARNING: This pipeline requires GitHub Secrets (DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD, 
+# AWS_EC2_HOST, AWS_EC2_USER, and AWS_SSH_PRIVATE_KEY) to be properly configured 
+# in the repository settings before running, otherwise deployment will fail.
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Obtain the source code from the repository
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 2. Set up Go environment
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    # 3. Run automated tests
+    - name: Run Tests
+      run: go test -v ./...
+
+    # 4. Log in to Docker Hub
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+    # 5. Build and push Docker image to Docker Hub
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
+
+    # 6. Deploy to AWS EC2 via SSH
+    # NOTE: This step assumes that the SSL certificates (*.pem) have been 
+    # manually and securely placed beforehand at '/opt/go-rv/assets/certs/' 
+    # on the AWS EC2 instance.
+    #- name: Deploy to AWS EC2
+    #  uses: appleboy/ssh-action@master
+    #  with:
+    #    host: ${{ secrets.AWS_EC2_HOST }}
+    #    username: ${{ secrets.AWS_EC2_USER }}
+    #    key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+    #    script: |
+    #      # Stop and remove the old container if it exists
+    #      docker stop go-rv-app || true
+    #      docker rm go-rv-app || true
+    #
+    #      # Pull the latest version from Docker Hub
+    #      docker pull ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
+    #
+    #      # Run the new container mapping ports and mounting the pre-existing 
+    #      # local SSL certificates from the AWS host into the container
+    #      docker run -d \
+    #        --name go-rv-app \
+    #        -p 80:80 \
+    #        -p 443:443 \
+    #        -p 8080:8080 \
+    #        -v /opt/go-rv/assets/certs:/app/assets/certs \
+    #        --restart always \
+    #        ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest

@@ -3,5 +3,9 @@
 *.out
 *.test
 
+# SSL Certificates
+assets/certs/*.pem
+
 # Miscellaneous
 README.pdf
+.DS_Store
