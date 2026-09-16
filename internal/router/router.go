@@ -39,7 +39,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Add routes based on the API contract
 	mux.HandleFunc("GET /", s.handleWelcome)
 	mux.HandleFunc("GET /health", s.handleHealth)
-	mux.HandleFunc("POST /api/{url...}", s.handleCreateURL)
+	mux.HandleFunc("POST /api/url", s.handleCreateURL)
 	mux.HandleFunc("GET /api/url", s.handleListURLs)
 	mux.HandleFunc("GET /api/url/{shortURL}", s.handleGetURL)
 	mux.HandleFunc("GET /{shortURL}", s.handleRedirect)
@@ -120,18 +120,17 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// handleCreateURL processes requests to create and AI-enrich a new short URL,
-// validating the payload and delegating persistence to the controller.
+// handleCreateURL processes JSON body requests to create and AI-enrich a new short URL.
 func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
-	// Validate the URL using the validator package
-	longURL := r.PathValue("url")
-	if err := validator.ValidateURLParam(longURL); err != nil {
+	// Validate and decode the JSON request body using the validator package.
+	req, err := validator.ValidateCreateURLRequest(r.Body)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Delegate URL processing, code generation, metadata enrichment, and storage to the controller
-	record, _, err := s.controller.CreateShortURL(longURL)
+	record, _, err := s.controller.CreateShortURL(req.URL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

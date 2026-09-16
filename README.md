@@ -34,7 +34,7 @@ The in-memory repository relies on a standard Go `map[string]URLRecord` protecte
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
 | **`/health`** | `GET` | **Infrastructure Monitoring:** Returns a JSON payload with service health status, timestamp, and server uptime (tailored for orchestrators like AWS ECS/K8s). |
-| **`/api/{url}`** | `POST` | **Creation & AI Enrichment:** Accepts a long URL, triggers an integration with the Gemini API to generate `aiTags` and `aiDescription`, allocates a unique shortUrl, persists the record, and returns the complete `URLRecord` in the response body. |
+| **`/api/url`** | `POST` | **Creation & AI Enrichment:** Accepts a JSON body with a long URL (`{"url": "..."}`), triggers an integration with the Gemini API to generate `aiTags` and `aiDescription`, allocates a unique shortUrl, persists the record, and returns the complete `URLRecord` in the response body. |
 | **`/api/url`** | `GET` | **Global Query:** Returns the complete in-memory map containing all registered items and their associated metadata in JSON format. |
 | **`/api/url/{shortUrl}`** | `GET` | **Individual Query:** Looks up a specific record by its unique `code` key and returns its `URLRecord` in JSON format. |
 | **`/{shortUrl}`** | `GET` | **Redirection & Metrics:** Intercepts root requests matching a registered `shortUrl`, executes an HTTP 302 redirect to the original URL, and concurrently increments the `hits` counter using a lightweight Go `goroutine`. |
