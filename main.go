@@ -19,7 +19,7 @@ func main() {
 	store := storage.NewMemoryStore()
 
 	// 2. Initialize the server with dependencies and register routes
-	srv := router.NewServer(store, AppName, Version, ServerHost, ServerPort)
+	srv := router.NewServer(store, AppName, Version, ServerScheme, ServerHost, ServerPort)
 	handler := srv.RegisterRoutes()
 
 	// Define server address and configuration (using your existing configuration constants)
@@ -38,7 +38,7 @@ func main() {
 
 	// Start the server in a separate goroutine to allow for graceful shutdown
 	go func() {
-		log.Printf("[%s] Server running at http://%s", AppName, addr)
+		log.Printf("[%s] Server running at %s://%s", AppName, ServerScheme, addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed unexpectedly: %v", err)
 		}
