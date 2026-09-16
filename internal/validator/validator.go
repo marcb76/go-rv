@@ -32,9 +32,10 @@ type CreateURLRequest struct {
 	URL string `json:"url"`
 }
 
-// ValidateCreateURL checks if the incoming request payload contains a valid and supported URL.
-func ValidateCreateURL(req CreateURLRequest) error {
-	trimmed := strings.TrimSpace(req.URL)
+// ValidateURLParam checks if the long URL string passed as a path parameter
+// is valid and uses a supported network scheme (HTTP or HTTPS).
+func ValidateURLParam(longURL string) error {
+	trimmed := strings.TrimSpace(longURL)
 	if trimmed == "" {
 		return ErrEmptyURL
 	}
@@ -53,7 +54,7 @@ func ValidateCreateURL(req CreateURLRequest) error {
 		return ErrInvalidURL
 	}
 
-	// All checks passed, the short URL code is considered valid.
+	// All checks passed, the long URL is considered valid.
 	return nil
 }
 

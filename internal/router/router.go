@@ -39,7 +39,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Add routes based on the API contract
 	mux.HandleFunc("GET /", s.handleWelcome)
 	mux.HandleFunc("GET /health", s.handleHealth)
-	mux.HandleFunc("POST /api/url", s.handleCreateURL)
+	mux.HandleFunc("POST /api/{url...}", s.handleCreateURL)
 	mux.HandleFunc("GET /api/url", s.handleListURLs)
 	mux.HandleFunc("GET /api/url/{shortURL}", s.handleGetURL)
 	mux.HandleFunc("GET /{shortURL}", s.handleRedirect)
@@ -119,14 +119,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // handleCreateURL processes requests to create and AI-enrich a new short URL,
 // validating the payload and persisting the record in memory.
 func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
-	var req validator.CreateURLRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body format (expected JSON): "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Validate the URL payload using the validator package
-	if err := validator.ValidateCreateURL(req); err != nil {
+	// Validate the URL using the validator package
+	longURL := r.PathValue("url")
+	if err := validator.ValidateURLParam(longURL); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -137,7 +132,7 @@ func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
 	// Construct the full short URL dynamically using the injected server configuration
 	baseURL := "http://" + s.host + ":" + s.port + "/"
 	record := &storage.URLRecord{
-		URL:           req.URL,
+		URL:           longURL,
 		ShortURL:      baseURL + shortURL,
 		AiTags:        []string{"tech", "redirect"}, // Placeholder until Gemini API integration
 		AiDescription: "Auto-generated description placeholder",
@@ -164,9 +159,8 @@ func (s *Server) handleListURLs(w http.ResponseWriter, r *http.Request) {
 
 // handleGetURL handles individual queries by looking up a specific record by its unique code.
 func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
-	shortURL := r.PathValue("shortURL")
-
 	// Validate the short URL path parameter
+	shortURL := r.PathValue("shortURL")
 	if err := validator.ValidateShortURLParam(shortURL); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -187,9 +181,8 @@ func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
 // handleRedirect intercepts short URL requests, validates the code, increments the hit counter,
 // and performs an HTTP 302 redirection to the original destination.
 func (s *Server) handleRedirect(w http.ResponseWriter, r *http.Request) {
-	shortURL := r.PathValue("shortURL")
-
 	// Validate the short URL path parameter (guards against reserved words and invalid characters)
+	shortURL := r.PathValue("shortURL")
 	if err := validator.ValidateShortURLParam(shortURL); err != nil {
 		http.NotFound(w, r)
 		return
