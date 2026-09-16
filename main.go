@@ -2,26 +2,35 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"go-rv/internal/router"
+	"go-rv/internal/storage"
 )
 
+// main initializes dependencies, sets up the server, and handles graceful shutdown.
 func main() {
-	// Initialize the HTTP request multiplexer (router)
-	mux := http.NewServeMux()
-	// Define the handler for the root path "/"
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Welcome to %s (v%s)! The server is running.", AppName, Version)
-	})
+	// 1. Initialize the in-memory storage layer
+	store := storage.NewMemoryStore()
 
-	// Define server address and configuration
+	// 2. Initialize the server with dependencies and register routes
+	srv := router.NewServer(store, AppName, Version, ServerHost, ServerPort)
+	handler := srv.RegisterRoutes()
+
+	// Define server address and configuration (using your existing configuration constants)
 	addr := ServerHost + ":" + ServerPort
-	server := &http.Server{Addr: addr, Handler: mux}
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 
 	// Setup channel to listen for OS interrupt or termination signals
 	quit := make(chan os.Signal, 1)
@@ -29,7 +38,7 @@ func main() {
 
 	// Start the server in a separate goroutine to allow for graceful shutdown
 	go func() {
-		log.Printf("[%s] Server running at http://%s:%s", AppName, ServerHost, ServerPort)
+		log.Printf("[%s] Server running at http://%s", AppName, addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed unexpectedly: %v", err)
 		}
