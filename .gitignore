@@ -1,0 +1,4 @@
+# Go Binaries and Executables
+*.exe
+*.out
+*.test
