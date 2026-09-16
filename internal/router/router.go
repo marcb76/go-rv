@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go-rv/internal/storage"
+	"go-rv/internal/validator"
 )
 
 // Server represents the HTTP server with its dependencies, configuration, and state.
@@ -116,17 +117,21 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCreateURL processes requests to create and AI-enrich a new short URL,
-// persisting the record in memory.
+// validating the payload and persisting the record in memory.
 func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		URL string `json:"url"`
-	}
+	var req validator.CreateURLRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, "Invalid request body format (expected JSON): "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Temporary code generator placeholder (will be replaced by validator & AI controller logic)
+	// Validate the URL payload using the validator package
+	if err := validator.ValidateCreateURL(req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Temporary code generator placeholder (will be replaced by AI controller logic)
 	shortURL := "abc123"
 
 	// Construct the full short URL dynamically using the injected server configuration
@@ -160,6 +165,14 @@ func (s *Server) handleListURLs(w http.ResponseWriter, r *http.Request) {
 // handleGetURL handles individual queries by looking up a specific record by its unique code.
 func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
 	shortURL := r.PathValue("shortURL")
+
+	// Validate the short URL path parameter
+	if err := validator.ValidateShortURLParam(shortURL); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve the URL record from the in-memory store.
 	record, exists := s.store.Get(shortURL)
 	if !exists {
 		http.Error(w, "URL not found", http.StatusNotFound)
@@ -171,13 +184,13 @@ func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(record)
 }
 
-// handleRedirect intercepts short URL requests, increments the hit counter concurrently,
+// handleRedirect intercepts short URL requests, validates the code, increments the hit counter,
 // and performs an HTTP 302 redirection to the original destination.
 func (s *Server) handleRedirect(w http.ResponseWriter, r *http.Request) {
 	shortURL := r.PathValue("shortURL")
 
-	// Ignore requests to reserved paths or empty short URLs.
-	if shortURL == "api" || shortURL == "health" || shortURL == "" {
+	// Validate the short URL path parameter (guards against reserved words and invalid characters)
+	if err := validator.ValidateShortURLParam(shortURL); err != nil {
 		http.NotFound(w, r)
 		return
 	}

@@ -18,9 +18,8 @@ The application bypasses traditional database latency by leveraging Go's native 
 
 ### Data Structure (`URLRecord`)
 Each shortened URL entity is stored in memory with the following structure:
-* `code` (string): The map key (`map-key`) identifying the entry.
 * `url` (string): The original long destination URL.
-* `shortUrl` (string): The generated short routing path.
+* `shortUrl` (string): The generated short routing path... and `map-key` of entry in memory's map.
 * `aiTags` ([]string): Intelligent tags or categories generated automatically via AI analysis upon creation.
 * `aiDescription` (string): A brief AI-driven description summarizing the content of the link.
 * `hits` (int): A concurrency-safe click counter.
