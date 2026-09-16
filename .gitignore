@@ -2,3 +2,6 @@
 *.exe
 *.out
 *.test
+
+# Miscellaneous
+README.pdf
