@@ -47,27 +47,27 @@ jobs:
     # NOTE: This step assumes that the SSL certificates (*.pem) have been 
     # manually and securely placed beforehand at '/opt/go-rv/assets/certs/' 
     # on the AWS EC2 instance.
-    #- name: Deploy to AWS EC2
-    #  uses: appleboy/ssh-action@master
-    #  with:
-    #    host: ${{ secrets.AWS_EC2_HOST }}
-    #    username: ${{ secrets.AWS_EC2_USER }}
-    #    key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
-    #    script: |
-    #      # Stop and remove the old container if it exists
-    #      docker stop go-rv-app || true
-    #      docker rm go-rv-app || true
-    #
-    #      # Pull the latest version from Docker Hub
-    #      docker pull ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
-    #
-    #      # Run the new container mapping ports and mounting the pre-existing 
-    #      # local SSL certificates from the AWS host into the container
-    #      docker run -d \
-    #        --name go-rv-app \
-    #        -p 80:80 \
-    #        -p 443:443 \
-    #        -p 8080:8080 \
-    #        -v /opt/go-rv/assets/certs:/app/assets/certs \
-    #        --restart always \
-    #        ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
+    - name: Deploy to AWS EC2
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.AWS_EC2_HOST }}
+        username: ${{ secrets.AWS_EC2_USER }}
+        key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+        script: |
+          # Stop and remove the old container if it exists
+          docker stop go-rv-app || true
+          docker rm go-rv-app || true
+
+          # Pull the latest version from Docker Hub
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
+
+          # Run the new container mapping ports and mounting the pre-existing 
+          # local SSL certificates from the AWS host into the container
+          docker run -d \
+            --name go-rv-app \
+            -p 80:80 \
+            -p 443:443 \
+            -p 8080:8080 \
+            -v /opt/go-rv/assets/certs:/app/assets/certs \
+            --restart always \
+            ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest

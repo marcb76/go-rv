@@ -1,9 +1,21 @@
 # Ignored files and directories by Docker: it will not be copied from host into the image
+# OS Environment specific files to ignore
+.DS_Store
+
+# Git and build artifacts to ignore
 .git
 .github
-assets/certs/
+.gitignore
+.dockerignore
+
+# Executable and test files to ignore
 *.exe
 *.out
 *.test
+
+# Documentation files to ignore
 README.pdf
-.DS_Store
+
+# SSL certificates to ignore
+assets/certs/
+*.pem

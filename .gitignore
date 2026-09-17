@@ -1,11 +1,14 @@
-# Go Binaries and Executables
+# OS Environment specific files to ignore
+.DS_Store
+
+# Executable and test files to ignore
 *.exe
 *.out
 *.test
 
-# SSL Certificates
-assets/certs/*.pem
-
-# Miscellaneous
+# Documentation files to ignore
 README.pdf
-.DS_Store
+
+# SSL Certificates
+assets/certs/
+*.pem
