@@ -24,6 +24,10 @@ func main() {
 
 	// Define server address and configuration (using your existing configuration constants)
 	addr := ServerHost + ":" + ServerPort
+	logAddr := addr
+	if ServerHost == "" {
+		logAddr = "localhost:" + ServerPort
+	}
 	server := &http.Server{
 		Addr:         addr,
 		Handler:      handler,
@@ -38,7 +42,7 @@ func main() {
 
 	// Start the server in a separate goroutine to allow for graceful shutdown
 	go func() {
-		log.Printf("[%s] Server running at %s://%s", AppName, ServerScheme, addr)
+		log.Printf("[%s] Server running at %s://%s", AppName, ServerScheme, logAddr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed unexpectedly: %v", err)
 		}
