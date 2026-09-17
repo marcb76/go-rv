@@ -50,7 +50,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 }
 
 // --- Handlers ---
-// handleWelcome processes root requests and returns a clean, simple HTML welcome page.
+// handleWelcome processes root requests and returns an interactive HTML welcome page with API route shortcuts.
 func (s *Server) handleWelcome(w http.ResponseWriter, r *http.Request) {
 	// Prevent root catch-all from capturing short codes or other registered paths
 	if r.URL.Path != "/" {
@@ -58,7 +58,7 @@ func (s *Server) handleWelcome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate the HTML content for the welcome page.
+	// Generate the HTML content for the welcome page with interactive sections and improved width/footer.
 	html := `
 <!DOCTYPE html>
 <html lang="en">
@@ -72,32 +72,180 @@ func (s *Server) handleWelcome(w http.ResponseWriter, r *http.Request) {
             background-color: #f8fafc;
             color: #1e293b;
             text-align: center;
-            padding-top: 80px;
+            padding: 40px 20px;
             margin: 0;
         }
         .container {
-            max-width: 600px;
+            max-width: 800px;
             margin: 0 auto;
             background: #ffffff;
-            padding: 40px;
+            padding: 30px 40px;
             border-radius: 12px;
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            text-align: left;
+            box-sizing: border-box;
         }
         h1 {
             color: #2563eb;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
+            text-align: center;
         }
-        p {
+        .subtitle {
             color: #64748b;
+            font-size: 1rem;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h3 {
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 6px;
+            margin-top: 25px;
+            color: #334155;
             font-size: 1.1rem;
+        }
+        .route-group {
+            background: #f1f5f9;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .route-info {
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .method {
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #fff;
+            margin-right: 6px;
+            font-size: 0.75rem;
+        }
+        .get { background-color: #10b981; }
+        .post { background-color: #3b82f6; }
+        
+        button, a.btn {
+            background-color: #2563eb;
+            color: white;
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.2s;
+        }
+        button:hover, a.btn:hover {
+            background-color: #1d4ed8;
+        }
+        input[type="text"] {
+            padding: 6px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            width: 180px;
+        }
+        .form-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            color: #64748b;
+            font-size: 0.85rem;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Welcome to ` + s.name + ` (v` + s.version + `)</h1>
-        <p>The server is up, running, and ready to process your URLs.</p>
+        <h1>` + s.name + `</h1>
+        <div class="subtitle">Version ` + s.version + ` — Server is up, running, and ready.</div>
+
+        <h3>System Status</h3>
+        <div class="route-group">
+            <div class="route-info"><span class="method get">GET</span>/health</div>
+            <a href="/health" target="_blank" class="btn">Test Health</a>
+        </div>
+
+        <h3>URL Management</h3>
+        <div class="route-group">
+            <div class="route-info"><span class="method get">GET</span>/api/url</div>
+            <a href="/api/url" target="_blank" class="btn">List All URLs</a>
+        </div>
+
+        <div class="route-group">
+            <div class="route-info"><span class="method get">GET</span>/api/url/{shortURL}</div>
+            <div class="form-row">
+                <input type="text" id="shortCodeInput" placeholder="e.g. 08e2bc">
+                <button onclick="openParamRoute('api')">Get Details</button>
+            </div>
+        </div>
+
+        <div class="route-group">
+            <div class="route-info"><span class="method get">GET</span>/{shortURL} (Redirect)</div>
+            <div class="form-row">
+                <input type="text" id="redirectCodeInput" placeholder="e.g. 08e2bc">
+                <button onclick="openParamRoute('redirect')">Go / Redirect</button>
+            </div>
+        </div>
+
+        <h3>Create Short URL (with Gemini AI)</h3>
+        <div class="route-group" style="flex-direction: column; align-items: stretch;">
+            <div class="form-row" style="width: 100%; margin-bottom: 8px;">
+                <input type="text" id="longUrlInput" placeholder="https://mbonet.xyz" style="flex-grow: 1; width: auto;">
+                <button onclick="createURL()" style="background-color: #059669;">POST /api/url</button>
+            </div>
+            <pre id="createResult" style="background: #1e293b; color: #38bdf8; padding: 12px; border-radius: 6px; font-size: 0.8rem; overflow-x: auto; display: none; margin: 0; width: 100%; box-sizing: border-box;"></pre>
+        </div>
+
+        <div class="footer">
+            &copy; Marc Bonet 2026. All rights reserved.
+        </div>
     </div>
+
+    <script>
+        function openParamRoute(type) {
+            let val = '';
+            if (type === 'api') {
+                val = document.getElementById('shortCodeInput').value.trim();
+                if (val) window.open('/api/url/' + val, '_blank');
+            } else if (type === 'redirect') {
+                val = document.getElementById('redirectCodeInput').value.trim();
+                if (val) window.open('/' + val, '_blank');
+            }
+        }
+
+        async function createURL() {
+            const url = document.getElementById('longUrlInput').value.trim();
+            const resultBox = document.getElementById('createResult');
+            if (!url) return;
+
+            resultBox.style.display = 'block';
+            resultBox.textContent = 'Processing with Gemini AI...';
+
+            try {
+                const response = await fetch('/api/url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+                const data = await response.json();
+                resultBox.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                resultBox.textContent = 'Error: ' + err.message;
+            }
+        }
+    </script>
 </body>
 </html>
 `
