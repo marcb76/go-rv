@@ -6,6 +6,6 @@ const (
 	Version      = "0.0.1"     // Version of the Proof of Concept
 	ServerScheme = "http"      // Scheme used by the server (http or https)
 	ServerHost   = "localhost" // IP address where the server will listen (empty means all local interfaces)
-	ServerPort   = "8080"      // Port on which the microservice will run
+	ServerPort   = "80"        // Port on which the microservice will run
 
 )

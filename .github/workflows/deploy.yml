@@ -66,8 +66,6 @@ jobs:
           docker run -d \
             --name go-rv-app \
             -p 80:80 \
-            -p 443:443 \
-            -p 8080:8080 \
             -v /opt/go-rv/assets/certs:/app/assets/certs \
             --restart always \
             ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
