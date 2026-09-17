@@ -101,7 +101,7 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 	// Send the HTTP POST request to the Gemini API with the JSON-encoded request body.
 	resp, err := http.Post(endpoint, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
-		log.Printf("[GeminiService] HTTP request failed: %v", err)
+		log.Printf("[gemini.go] HTTP request failed: %v", err)
 		return "", nil, err
 	}
 	defer resp.Body.Close()
@@ -109,14 +109,14 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 	// Check if the response status code indicates an error before attempting to decode the response body.
 	if resp.StatusCode != http.StatusOK {
 		errorBodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("[GeminiService] Error response received. Status: %d, Body: %s", resp.StatusCode, string(errorBodyBytes))
+		log.Printf("[gemini.go] Error response received. Status: %d, Body: %s", resp.StatusCode, string(errorBodyBytes))
 		return "", nil, fmt.Errorf("gemini api returned status: %d", resp.StatusCode)
 	}
 
 	// Decode the JSON response from the Gemini API into the geminiResponse struct.
 	var geminiResp geminiResponse
 	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
-		log.Printf("[GeminiService] Failed to decode JSON response: %v", err)
+		log.Printf("[gemini.go] Failed to decode JSON response: %v", err)
 		return "", nil, err
 	}
 
@@ -132,7 +132,7 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 	// Attempt to unmarshal the cleaned JSON text into the AIMetadata struct and report errors if it fails.
 	var metadata AIMetadata
 	if err := json.Unmarshal([]byte(rawText), &metadata); err != nil {
-		log.Printf("[GeminiService] Failed to parse AI response as JSON. Raw text: %s", rawText)
+		log.Printf("[gemini.go] Failed to parse AI response as JSON. Raw text: %s", rawText)
 		return "", nil, fmt.Errorf("failed to parse AI response as JSON: %v (raw text: %s)", err, rawText)
 	}
 

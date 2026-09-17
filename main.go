@@ -20,7 +20,7 @@ func main() {
 	handler := srv.RegisterRoutes()
 
 	// Define server address and configuration (using your existing configuration constants)
-	addr := ":" + ServerPort
+	addr := InternalServerHost + ":" + InternalServerPort
 	server := &http.Server{
 		Addr:         addr,
 		Handler:      handler,
@@ -35,22 +35,23 @@ func main() {
 
 	// Start the server in a separate goroutine to allow for graceful shutdown
 	go func() {
-		log.Printf("[%s] Server running at %s://%s:%s", AppName, ServerScheme, ServerHost, ServerPort)
+		log.Printf("[main.go] External Server running at %s://%s:%s", ServerScheme, ServerHost, ServerPort)
+		log.Printf("[main.go] Internal Server running at %s://%s:%s", InternalServerScheme, InternalServerHost, InternalServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed unexpectedly: %v", err)
+			log.Fatalf("[main.go] Server failed unexpectedly: %v", err)
 		}
 	}()
 
 	// Wait for an interrupt signal to initiate graceful shutdown
 	sig := <-quit
-	log.Printf("Shutdown signal received (%v). Initiating Graceful Shutdown...", sig)
+	log.Printf("[main.go] Shutdown signal received (%v). Initiating Graceful Shutdown...", sig)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Server was forced to shut down: %v", err)
+		log.Fatalf("[main.go] Server was forced to shut down: %v", err)
 	}
 
 	// All done... log the final message
-	log.Println("Server stopped gracefully and safely.")
-	log.Println("Have a nice day!")
+	log.Printf("[main.go] Server stopped gracefully and safely.")
+	log.Printf("[main.go] Have a nice day!")
 }
