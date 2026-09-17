@@ -25,7 +25,7 @@ WORKDIR /app
 COPY --from=builder /app/go-rv .
 
 # Expose the ports your application will use (e.g., HTTP and HTTPS)
-EXPOSE 80
+EXPOSE 8080
 
 # Command to run the binary
 CMD ["./go-rv"]

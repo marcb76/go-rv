@@ -65,7 +65,6 @@ jobs:
           # local SSL certificates from the AWS host into the container
           docker run -d \
             --name go-rv-app \
-            -p 80:80 \
-            -v /opt/go-rv/assets/certs:/app/assets/certs \
+            -p 8080:8080 \
             --restart always \
             ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
