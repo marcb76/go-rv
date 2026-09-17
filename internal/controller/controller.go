@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"time"
 
+	"go-rv/internal/service"
 	"go-rv/internal/storage"
 )
 
@@ -12,15 +13,17 @@ import (
 // metadata enrichment, and repository coordination.
 type URLController struct {
 	store  *storage.MemoryStore
+	gemini *service.GeminiService
 	scheme string
 	host   string
 	port   string
 }
 
 // NewURLController creates a new instance of URLController with its required dependencies.
-func NewURLController(store *storage.MemoryStore, scheme, host, port string) *URLController {
+func NewURLController(store *storage.MemoryStore, gemini *service.GeminiService, scheme, host, port string) *URLController {
 	return &URLController{
 		store:  store,
+		gemini: gemini,
 		scheme: scheme,
 		host:   host,
 		port:   port,
@@ -31,20 +34,30 @@ func NewURLController(store *storage.MemoryStore, scheme, host, port string) *UR
 // enriches the record with AI metadata, persists it in memory, and returns the created record.
 func (c *URLController) CreateShortURL(longURL string) (*storage.URLRecord, string, error) {
 	// Generate a unique short code using a truncated cryptographic hash of the URL and timestamp
-	shortCode := generateShortCode(longURL)
+	shortUrlCode := generateShortUrlCode(longURL)
 
 	// Construct the fully qualified short URL path
 	baseURL := c.scheme + "://" + c.host + ":" + c.port + "/"
-	fullShortURL := baseURL + shortCode
+	shortURL := baseURL + shortUrlCode
 
-	// TODO: Integrate Gemini API here to dynamically generate aiTags and aiDescription
-	aiTags := []string{"to", "be", "generated", "via", "AI", "Gemini", "API"}
-	aiDescription := "To be generated via Gemini API."
+	// Use the Gemini service to analyze the URL and generate AI metadata
+	aiDescription, aiTags, err := c.gemini.AnalyzeURL(longURL)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// If metadata is empty, provide default values to ensure the record is always populated
+	if aiDescription == "" {
+		aiDescription = "No description available."
+	}
+	if len(aiTags) == 0 {
+		aiTags = []string{"uncategorized"}
+	}
 
 	// Assemble the URL record
 	record := &storage.URLRecord{
 		URL:           longURL,
-		ShortURL:      fullShortURL,
+		ShortURL:      shortURL,
 		AiTags:        aiTags,
 		AiDescription: aiDescription,
 		Hits:          0,
@@ -52,8 +65,8 @@ func (c *URLController) CreateShortURL(longURL string) (*storage.URLRecord, stri
 	}
 
 	// Persist the record in the in-memory store using the short code as the map key
-	c.store.Set(shortCode, record)
-	return record, shortCode, nil
+	c.store.Set(shortUrlCode, record)
+	return record, shortUrlCode, nil
 }
 
 // GetURL retrieves an individual URL record by its unique short code.
@@ -77,8 +90,8 @@ func (c *URLController) IncrementHits(shortCode string) bool {
 	return true
 }
 
-// generateShortCode produces a concise, URL-safe alphanumeric hash string from a source URL.
-func generateShortCode(input string) string {
+// generateShortUrlCode produces a concise, URL-safe alphanumeric hash string from a source URL.
+func generateShortUrlCode(input string) string {
 	hash := sha256.Sum256([]byte(input + time.Now().String()))
 	encoded := hex.EncodeToString(hash[:])
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go-rv/internal/controller"
+	"go-rv/internal/service"
 	"go-rv/internal/storage"
 	"go-rv/internal/validator"
 )
@@ -19,14 +20,16 @@ type Server struct {
 }
 
 // NewServer creates a new instance of the route server, initializing the URL controller and configuration.
-func NewServer(store *storage.MemoryStore, name, version, scheme, host, port string) *Server {
+func NewServer(name, version, scheme, host, port, geminiAPIKey string) *Server {
 	// Initialize the business controller with HTTP scheme, host, and port parameters
-	urlController := controller.NewURLController(store, scheme, host, port)
+	store := storage.NewMemoryStore()
+	gemini := service.NewGeminiService(geminiAPIKey)
+	controller := controller.NewURLController(store, gemini, scheme, host, port)
 
 	return &Server{
 		name:       name,
 		version:    version,
-		controller: urlController,
+		controller: controller,
 		started:    time.Now(),
 	}
 }

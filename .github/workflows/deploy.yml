@@ -1,7 +1,7 @@
 name: CI/CD Pipeline - go-rv!
 
 # WARNING: This pipeline requires GitHub Secrets (DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD, 
-# AWS_EC2_HOST, AWS_EC2_USER, and AWS_SSH_PRIVATE_KEY) to be properly configured 
+# AWS_EC2_HOST, AWS_EC2_USER, AWS_SSH_PRIVATE_KEY and GEMINI_API_KEY) to be properly configured 
 # in the repository settings before running, otherwise deployment will fail.
 
 on:
@@ -26,6 +26,8 @@ jobs:
 
     # 3. Run automated tests
     - name: Run Tests
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: go test -v ./...
 
     # 4. Log in to Docker Hub
@@ -66,5 +68,6 @@ jobs:
           docker run -d \
             --name go-rv-app \
             -p 8080:8080 \
+            -e GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
             --restart always \
             ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest

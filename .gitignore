@@ -12,3 +12,6 @@ README.pdf
 # SSL Certificates
 assets/certs/
 *.pem
+
+# Gemini API key
+/assets/gemini/gemini_api_key.txt

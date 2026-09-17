@@ -10,24 +10,17 @@ import (
 	"time"
 
 	"go-rv/internal/router"
-	"go-rv/internal/storage"
 )
 
 // main initializes dependencies, sets up the server, and handles graceful shutdown.
 func main() {
-	// 1. Initialize the in-memory storage layer
-	store := storage.NewMemoryStore()
-
-	// 2. Initialize the server with dependencies and register routes
-	srv := router.NewServer(store, AppName, Version, ServerScheme, ServerHost, ServerPort)
+	// Initialize the server with dependencies and register routes
+	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
+	srv := router.NewServer(AppName, Version, ServerScheme, ServerHost, ServerPort, geminiAPIKey)
 	handler := srv.RegisterRoutes()
 
 	// Define server address and configuration (using your existing configuration constants)
-	addr := ServerHost + ":" + ServerPort
-	logAddr := addr
-	if ServerHost == "" {
-		logAddr = "localhost:" + ServerPort
-	}
+	addr := ":" + ServerPort
 	server := &http.Server{
 		Addr:         addr,
 		Handler:      handler,
@@ -42,7 +35,7 @@ func main() {
 
 	// Start the server in a separate goroutine to allow for graceful shutdown
 	go func() {
-		log.Printf("[%s] Server running at %s://%s", AppName, ServerScheme, logAddr)
+		log.Printf("[%s] Server running at %s://%s:%s", AppName, ServerScheme, ServerHost, ServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed unexpectedly: %v", err)
 		}
@@ -58,5 +51,6 @@ func main() {
 	}
 
 	// All done... log the final message
-	log.Println("Server stopped gracefully and safely. Goodbye!")
+	log.Println("Server stopped gracefully and safely.")
+	log.Println("Have a nice day!")
 }

@@ -12,6 +12,7 @@
 *.exe
 *.out
 *.test
+run.sh
 
 # Documentation files to ignore
 README.pdf
@@ -19,3 +20,6 @@ README.pdf
 # SSL certificates to ignore
 assets/certs/
 *.pem
+
+# Gemini API key
+/assets/gemini/gemini_api_key.txt
