@@ -16,3 +16,7 @@ assets/certs/
 
 # Gemini API key
 /assets/gemini/gemini_api.key
+
+# Local environment configuration files
+still-to-do.md
+still-to-do.pdf
