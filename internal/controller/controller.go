@@ -35,23 +35,23 @@ func NewShortURLController(store *storage.MemoryStore, gemini *service.GeminiSer
 	}
 }
 
-// CreateShortURL processes a long destination URL, generates a unique short code,
-// enriches the record with AI metadata, persists it in memory, and returns the created record.
-func (c *ShortURLController) CreateShortURL(longURL string) (*storage.URLRecord, string, error) {
+// CreateShortURL returns the existing record for a normalized URL or creates and stores
+// a new record with a unique code and AI metadata. The bool is true only for a new record.
+func (c *ShortURLController) CreateShortURL(longURL string) (*storage.URLRecord, bool, error) {
 	key, err := GenerateKey(longURL)
 	if err != nil {
-		return nil, "", err
+		return nil, false, err
 	}
 
 	// Avoid repeating the Gemini request when this normalized URL already exists.
 	if existing, exists := c.store.Get(key); exists {
-		return existing, existing.Code, nil
+		return existing, false, nil
 	}
 
 	// Use the Gemini service to analyze the URL and generate AI metadata
 	aiDescription, aiTags, err := c.gemini.AnalyzeURL(longURL)
 	if err != nil {
-		return nil, "", err
+		return nil, false, err
 	}
 
 	// If metadata is empty, provide default values to ensure the record is always populated
@@ -66,13 +66,13 @@ func (c *ShortURLController) CreateShortURL(longURL string) (*storage.URLRecord,
 	c.createMu.Lock()
 	defer c.createMu.Unlock()
 	if existing, exists := c.store.Get(key); exists {
-		return existing, existing.Code, nil
+		return existing, false, nil
 	}
 
 	for {
 		code, err := generateCode()
 		if err != nil {
-			return nil, "", fmt.Errorf("generate short URL code: %w", err)
+			return nil, false, fmt.Errorf("generate short URL code: %w", err)
 		}
 
 		shortURL := c.scheme + "://" + c.host + ":" + c.port + "/" + code
@@ -90,19 +90,19 @@ func (c *ShortURLController) CreateShortURL(longURL string) (*storage.URLRecord,
 			continue
 		}
 		if err != nil {
-			return nil, "", fmt.Errorf("store URL record: %w", err)
+			return nil, false, fmt.Errorf("store URL record: %w", err)
 		}
 		if !added {
 			if existing, exists := c.store.Get(key); exists {
-				return existing, existing.Code, nil
+				return existing, false, nil
 			}
-			return nil, "", fmt.Errorf("store URL record: key %q already exists", key)
+			return nil, false, fmt.Errorf("store URL record: key %q already exists", key)
 		}
-		return record, code, nil
+		return record, true, nil
 	}
 }
 
-// ListShortURLs retrieves all registered URL records from the in-memory store.
+// ListShortURLs returns all records indexed by their short code.
 func (c *ShortURLController) ListShortURLs() map[string]storage.URLRecord {
 	byCode := make(map[string]storage.URLRecord)
 	for _, record := range c.store.All() {
@@ -111,22 +111,23 @@ func (c *ShortURLController) ListShortURLs() map[string]storage.URLRecord {
 	return byCode
 }
 
-// GetShortURL retrieves a pointer to a copy of the URL record by its map key.
+// GetShortURL retrieves a copy of the URL record by its map key.
 func (c *ShortURLController) GetShortURL(key string) (*storage.URLRecord, bool) {
 	return c.store.Get(key)
 }
 
-// GetShortURLByShortURL retrieves key and a pointer to a copy of the URL record by its complete short URL.
+// GetShortURLByShortURL retrieves the map key and a copy of the record by its complete short URL.
 func (c *ShortURLController) GetShortURLByShortURL(shortURL string) (string, *storage.URLRecord, bool) {
 	return c.store.GetByShortURL(shortURL)
 }
 
-// GetShortURLByCode retrieves key and a pointer to a copy of the URL record by its short code.
+// GetShortURLByCode retrieves the map key and a copy of the record by its short code.
 func (c *ShortURLController) GetShortURLByCode(code string) (string, *storage.URLRecord, bool) {
 	return c.store.GetByCode(code)
 }
 
-// IncrementShortURLHits increments the access counter for a short URL and return a pointer to a copy of the updated record.
+// IncrementShortURLHits atomically increments the hit counter for the record at key
+// and returns a copy of the updated record.
 func (c *ShortURLController) IncrementShortURLHits(key string) (*storage.URLRecord, bool) {
 	return c.store.IncrementHits(key)
 }

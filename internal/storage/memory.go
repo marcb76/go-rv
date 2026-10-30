@@ -9,7 +9,7 @@ import (
 // ErrNilURLRecord is returned when Set is called with a nil record.
 var ErrNilURLRecord = errors.New("storage: cannot store a nil URLRecord")
 
-// ErrDuplicateCode is returned when a different map key already has the record's code.
+// ErrDuplicateCode is returned when another record already uses the code.
 var ErrDuplicateCode = errors.New("storage: short URL code already exists")
 
 // URLRecord represents the core entity for a shortened URL and its associated metadata.
@@ -74,7 +74,8 @@ func (s *MemoryStore) GetByCode(code string) (string, *URLRecord, bool) {
 }
 
 // Set stores a URL record if the key does not already exist.
-// It returns true when added, false when the key already exists, and an error for a nil record.
+// It returns true when added, false when the key already exists, and an error for a nil
+// record or a code already used by another record.
 func (s *MemoryStore) Set(key string, record *URLRecord) (bool, error) {
 	if record == nil {
 		return false, ErrNilURLRecord
@@ -120,7 +121,7 @@ func (s *MemoryStore) All() map[string]URLRecord {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Create a shallow copy of the map to prevent external race conditions
+	// Copy the map and each record to prevent callers from mutating stored data.
 	result := make(map[string]URLRecord, len(s.urls))
 	for k, v := range s.urls {
 		if v != nil {

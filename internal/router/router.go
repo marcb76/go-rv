@@ -256,7 +256,7 @@ func (s *Server) handleWelcome(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
-// handleCreateURL processes JSON body requests to create and AI-enrich a new short URL.
+// handleCreateURL creates a short URL or returns the existing one for a duplicate destination.
 func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
 	// Validate and decode the JSON request body using the validator package.
 	req, err := validator.ValidateCreateURLRequest(r.Body)
@@ -265,16 +265,20 @@ func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delegate URL processing, code generation, metadata enrichment, and storage to the controller
-	record, _, err := s.controller.CreateShortURL(req.URL)
+	// Delegate URL normalization, duplicate detection, metadata enrichment, and storage to the controller.
+	record, created, err := s.controller.CreateShortURL(req.URL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Respond to the client with the newly created URL record.
+	// Return 201 for a new record or 200 when reusing an existing record.
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	if created {
+		w.WriteHeader(http.StatusCreated)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
 	json.NewEncoder(w).Encode(record)
 }
 
@@ -289,9 +293,9 @@ func (s *Server) handleListURLs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(records)
 }
 
-// handleGetURL handles individual queries by looking up a specific record by its unique code.
+// handleGetURL returns a record selected by its short code.
 func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
-	// Validate the short URL path parameter
+	// Validate the short code path parameter.
 	shortURL := r.PathValue("shortURL")
 	if err := validator.ValidateShortURLParam(shortURL); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -310,10 +314,10 @@ func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(record)
 }
 
-// handleRedirectURL intercepts short URL requests, validates the code, increments the hit counter via controller,
+// handleRedirectURL handles requests by short code, increments the hit counter via the controller,
 // and performs an HTTP 302 redirection to the original destination.
 func (s *Server) handleRedirectURL(w http.ResponseWriter, r *http.Request) {
-	// Validate the short URL path parameter (guards against reserved words and invalid characters)
+	// Validate the short code path parameter (guards against reserved words and invalid characters).
 	shortURL := r.PathValue("shortURL")
 	if err := validator.ValidateShortURLParam(shortURL); err != nil {
 		http.NotFound(w, r)
