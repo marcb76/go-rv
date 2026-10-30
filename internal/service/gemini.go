@@ -62,11 +62,8 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 		return "", nil, fmt.Errorf("GEMINI_API_KEY is not configured")
 	}
 
-	// Construct the endpoint URL for the Gemini API, including the API key as a query parameter.
-	//endpoint := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=%s", s.apiKey)
-	//endpoint := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=%s", s.apiKey)
-	endpoint := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=%s", s.apiKey)
-	//endpoint := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=%s", s.apiKey)
+	// Keep the API key out of the URL; send it in the x-goog-api-key header instead.
+	endpoint := "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
 
 	// Define the global behavior of the model using System Instructions
 	systemInstructionText := "You are a precise metadata extraction assistant. " +
@@ -98,8 +95,14 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 		return "", nil, err
 	}
 
-	// Send the HTTP POST request to the Gemini API with the JSON-encoded request body.
-	resp, err := http.Post(endpoint, "application/json", bytes.NewBuffer(jsonBody))
+	// Send the API key as a header so it is not included in URL-based logs.
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", s.apiKey)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("[gemini.go] HTTP request failed: %v", err)
 		return "", nil, err
