@@ -26,6 +26,16 @@ func NewGeminiService(apiKey string) *GeminiService {
 type geminiRequest struct {
 	SystemInstruction *geminiContent  `json:"system_instruction,omitempty"`
 	Contents          []geminiContent `json:"contents"`
+	Tools             []geminiTool    `json:"tools,omitempty"`
+}
+
+type geminiTool struct {
+	URLContext struct{} `json:"url_context"`
+}
+
+type geminiURLMetadata struct {
+	RetrievedURL       string `json:"retrieved_url"`
+	URLRetrievalStatus string `json:"url_retrieval_status"`
 }
 
 // geminiContent represents a container for content parts within a Gemini request.
@@ -46,6 +56,9 @@ type geminiResponse struct {
 				Text string `json:"text"`
 			} `json:"parts"`
 		} `json:"content"`
+		URLContextMetadata struct {
+			URLMetadata []geminiURLMetadata `json:"url_metadata"`
+		} `json:"url_context_metadata"`
 	} `json:"candidates"`
 }
 
@@ -55,7 +68,7 @@ type AIMetadata struct {
 	Tags        []string `json:"tags"`
 }
 
-// AnalyzeURL sends the target URL to Gemini 1.5 Flash and extracts a descriptive summary and relevant tags.
+// AnalyzeURL uses Gemini URL Context to read the target page and extract a summary and relevant tags.
 func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 	// Return an error immediately if the API key is missing instead of falling back.
 	if s.apiKey == "" {
@@ -65,14 +78,15 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 	// Keep the API key out of the URL; send it in the x-goog-api-key header instead.
 	endpoint := "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
 
-	// Define the global behavior of the model using System Instructions
-	systemInstructionText := "You are a precise metadata extraction assistant. " +
-		"Always analyze the provided URL and return strictly a flat JSON object (without markdown code blocks, " +
+	// Ask Gemini to use URL Context and base the metadata on retrieved page content.
+	systemInstructionText := "You are a precise page-content metadata extraction assistant. " +
+		"Use the URL Context tool to read the supplied page and base your answer only on its retrieved content. " +
+		"Do not infer the page's purpose from the URL alone. " +
+		"Return strictly a flat JSON object (without markdown code blocks, " +
 		"backticks, or additional text) containing exactly two keys: " +
 		"\"description\" (a concise 1-2 sentence summary of the site's purpose) and " +
 		"\"tags\" (an array of 3 to 5 relevant lowercase keywords)." +
-		"Never invent any information or add details that are not present on the website." +
-		"Double check website content for accuracy."
+		"Do not invent information that is not present in the retrieved page content."
 
 	// Set the user prompt to only include the data to be processed
 	userPrompt := fmt.Sprintf("Analyze the following URL: %s", targetURL)
@@ -87,6 +101,7 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 				Parts: []geminiPart{{Text: userPrompt}},
 			},
 		},
+		Tools: []geminiTool{{URLContext: struct{}{}}},
 	}
 
 	// Marshal the request body into JSON format for the HTTP POST request.
@@ -127,6 +142,9 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
 		return "", nil, fmt.Errorf("empty response from gemini")
 	}
+	if !hasSuccessfulURLContext(geminiResp.Candidates[0].URLContextMetadata.URLMetadata) {
+		return "", nil, fmt.Errorf("gemini URL Context did not successfully retrieve page content")
+	}
 
 	// Extract the raw text from the first candidate and clean it from any markdown formatting.
 	rawText := geminiResp.Candidates[0].Content.Parts[0].Text
@@ -141,6 +159,15 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 
 	// Return the extracted description and tags from the AIMetadata struct.
 	return metadata.Description, metadata.Tags, nil
+}
+
+func hasSuccessfulURLContext(metadata []geminiURLMetadata) bool {
+	for _, result := range metadata {
+		if result.URLRetrievalStatus == "URL_RETRIEVAL_STATUS_SUCCESS" {
+			return true
+		}
+	}
+	return false
 }
 
 // cleanMarkdownJSON strips out markdown code blocks if the model includes them in the response.
