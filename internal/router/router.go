@@ -2,7 +2,10 @@ package router
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"go-rv/internal/controller"
@@ -13,24 +16,26 @@ import (
 
 // Server represents the HTTP server with its dependencies, configuration, and state.
 type Server struct {
-	name       string
-	version    string
-	controller *controller.ShortURLController
-	started    time.Time
+	name              string
+	version           string
+	controller        *controller.ShortURLController
+	createRateLimiter *postRateLimiter
+	started           time.Time
 }
 
 // NewServer creates a new instance of the route server, initializing the URL controller and configuration.
-func NewServer(name, version, scheme, host, port, geminiAPIKey string) *Server {
+func NewServer(name, version, scheme, host, port, geminiAPIKey string, createURLRateLimit int) *Server {
 	// Initialize the business controller with HTTP scheme, host, and port parameters
 	store := storage.NewMemoryStore()
 	gemini := service.NewGeminiService(geminiAPIKey)
 	controller := controller.NewShortURLController(store, gemini, scheme, host, port)
 
 	return &Server{
-		name:       name,
-		version:    version,
-		controller: controller,
-		started:    time.Now(),
+		name:              name,
+		version:           version,
+		controller:        controller,
+		createRateLimiter: newPostRateLimiter(createURLRateLimit),
+		started:           time.Now(),
 	}
 }
 
@@ -258,6 +263,16 @@ func (s *Server) handleWelcome(w http.ResponseWriter, r *http.Request) {
 
 // handleCreateURL creates a short URL or returns the existing one for a duplicate destination.
 func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
+	if allowed, retryAfter := s.createRateLimiter.allow(); !allowed {
+		retryAfterSeconds := int(math.Ceil(retryAfter.Seconds()))
+		if retryAfterSeconds < 1 {
+			retryAfterSeconds = 1
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+		http.Error(w, fmt.Sprintf("rate limit exceeded: maximum %d creation requests per minute", s.createRateLimiter.limit), http.StatusTooManyRequests)
+		return
+	}
+
 	// Validate and decode the JSON request body using the validator package.
 	req, err := validator.ValidateCreateURLRequest(r.Body)
 	if err != nil {

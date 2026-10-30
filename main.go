@@ -16,7 +16,7 @@ import (
 func main() {
 	// Initialize the server with dependencies and register routes
 	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
-	srv := router.NewServer(AppName, Version, ServerScheme, ServerHost, ServerPort, geminiAPIKey)
+	srv := router.NewServer(AppName, Version, ServerScheme, ServerHost, ServerPort, geminiAPIKey, CreateURLRateLimit)
 	handler := srv.RegisterRoutes()
 
 	// Define server address and configuration (using your existing configuration constants)
