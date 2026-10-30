@@ -24,3 +24,6 @@ assets/certs/
 
 # Gemini API key
 /assets/gemini/gemini_api.key
+
+# MongoDB password
+/assets/mongo/db_password

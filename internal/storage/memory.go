@@ -37,40 +37,40 @@ func NewMemoryStore() *MemoryStore {
 }
 
 // Get safely retrieves a record by its key using a concurrent read lock.
-func (s *MemoryStore) Get(key string) (*URLRecord, bool) {
+func (s *MemoryStore) Get(key string) (*URLRecord, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	record, exists := s.urls[key]
 	if !exists || record == nil {
-		return nil, false
+		return nil, false, nil
 	}
-	return cloneRecord(record), true
+	return cloneRecord(record), true, nil
 }
 
 // GetByShortURL finds a record by its full short URL and returns its map key.
-func (s *MemoryStore) GetByShortURL(shortURL string) (string, *URLRecord, bool) {
+func (s *MemoryStore) GetByShortURL(shortURL string) (string, *URLRecord, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	for key, record := range s.urls {
 		if record != nil && record.ShortURL == shortURL {
-			return key, cloneRecord(record), true
+			return key, cloneRecord(record), true, nil
 		}
 	}
-	return "", nil, false
+	return "", nil, false, nil
 }
 
 // GetByCode finds a record by its short code and returns its map key.
-func (s *MemoryStore) GetByCode(code string) (string, *URLRecord, bool) {
+func (s *MemoryStore) GetByCode(code string) (string, *URLRecord, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	for key, record := range s.urls {
 		if record != nil && record.Code == code {
-			return key, cloneRecord(record), true
+			return key, cloneRecord(record), true, nil
 		}
 	}
-	return "", nil, false
+	return "", nil, false, nil
 }
 
 // Set stores a URL record if the key does not already exist.
@@ -102,22 +102,22 @@ func (s *MemoryStore) Set(key string, record *URLRecord) (bool, error) {
 
 // IncrementHits increments a record's hit counter while holding the write lock.
 // It returns a copy of the updated record so callers do not need to mutate the stored value.
-func (s *MemoryStore) IncrementHits(key string) (*URLRecord, bool) {
+func (s *MemoryStore) IncrementHits(key string) (*URLRecord, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	record, exists := s.urls[key]
 	if !exists || record == nil {
-		return nil, false
+		return nil, false, nil
 	}
 
 	record.Hits++
-	return cloneRecord(record), true
+	return cloneRecord(record), true, nil
 }
 
 // All returns a copy of all registered URL records stored in memory,
 // protected by a read lock for thread safety.
-func (s *MemoryStore) All() map[string]URLRecord {
+func (s *MemoryStore) All() (map[string]URLRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -128,7 +128,7 @@ func (s *MemoryStore) All() map[string]URLRecord {
 			result[k] = *cloneRecord(v)
 		}
 	}
-	return result
+	return result, nil
 }
 
 // cloneRecord copies a URLRecord and its mutable slice fields.

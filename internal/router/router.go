@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -25,9 +26,8 @@ type Server struct {
 }
 
 // NewServer creates a new instance of the route server, initializing the URL controller and configuration.
-func NewServer(name, version, scheme, host, port, geminiAPIKey string, createURLRateLimit int) *Server {
-	// Initialize the business controller with HTTP scheme, host, and port parameters
-	store := storage.NewMemoryStore()
+func NewServer(name, version, scheme, host, port, geminiAPIKey string, createURLRateLimit int, store storage.Store) *Server {
+	// Initialize the business controller with its storage and service dependencies.
 	gemini := service.NewGeminiService(geminiAPIKey)
 	controller := controller.NewShortURLController(store, gemini, scheme, host, port)
 
@@ -78,7 +78,7 @@ footer{margin-top:2.5rem;padding-top:1.5rem;border-top:1px solid var(--border-co
 </head>
 <body><main>
 <header><h1>{{.Name}}</h1><p class="subtitle">AI-assisted URL shortening, powered by Go and Gemini</p></header>
-<section><h2>About the Project</h2><p><strong>{{.Name}}</strong> is a lightweight URL shortener built in Go. It creates compact links, enriches them with AI-generated metadata, and tracks redirects with a concurrency-safe in-memory store.</p></section>
+<section><h2>About the Project</h2><p><strong>{{.Name}}</strong> is a lightweight URL shortener built in Go. It creates compact links, enriches them with AI-generated metadata, persists them in MongoDB Atlas, and tracks redirects with atomic hit counters.</p></section>
 <section><h2>Direct Links (GET Endpoints)</h2><ul class="endpoint-list">
 <li><a href="/health" target="_blank"><span class="method">GET /health</span></a> - Service health and uptime.</li>
 <li><a href="/api/url" target="_blank"><span class="method">GET /api/url</span></a> - List all shortened URLs.</li>
@@ -108,6 +108,7 @@ func (s *Server) handleWelcome(w http.ResponseWriter, r *http.Request) {
 		Name, Version string
 		RateLimit     int
 	}{Name: s.name, Version: s.version, RateLimit: s.createRateLimiter.limit}); err != nil {
+		log.Printf("[router] Failed to render welcome page: %v", err)
 		http.Error(w, "failed to render welcome page", http.StatusInternalServerError)
 	}
 }
@@ -127,6 +128,7 @@ func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
 	// Validate and decode the JSON request body using the validator package.
 	req, err := validator.ValidateCreateURLRequest(r.Body)
 	if err != nil {
+		log.Printf("[router] Invalid create URL request: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -134,6 +136,7 @@ func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
 	// Delegate URL normalization, duplicate detection, metadata enrichment, and storage to the controller.
 	record, created, err := s.controller.CreateShortURL(req.URL)
 	if err != nil {
+		log.Printf("[router] Failed to create short URL: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -145,18 +148,27 @@ func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusOK)
 	}
-	json.NewEncoder(w).Encode(record)
+	if err := json.NewEncoder(w).Encode(record); err != nil {
+		log.Printf("[router] Failed to encode create URL response: %v", err)
+	}
 }
 
 // handleListURLs handles global audit requests, returning all registered records.
 func (s *Server) handleListURLs(w http.ResponseWriter, r *http.Request) {
 	// Retrieve all URL records through the controller.
-	records := s.controller.ListShortURLs()
+	records, err := s.controller.ListShortURLs()
+	if err != nil {
+		log.Printf("[router] Failed to list URLs: %v", err)
+		http.Error(w, "failed to list URLs", http.StatusInternalServerError)
+		return
+	}
 
 	// Respond to the client with the list of all URL records.
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(records)
+	if err := json.NewEncoder(w).Encode(records); err != nil {
+		log.Printf("[router] Failed to encode URL list response: %v", err)
+	}
 }
 
 // handleGetURL returns a record selected by its short code.
@@ -164,12 +176,18 @@ func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
 	// Validate the short code path parameter.
 	shortURL := r.PathValue("shortURL")
 	if err := validator.ValidateShortURLParam(shortURL); err != nil {
+		log.Printf("[router] Invalid short URL code in retrieval request %q: %v", shortURL, err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Retrieve the URL record using the controller.
-	_, record, exists := s.controller.GetShortURLByCode(shortURL)
+	_, record, exists, err := s.controller.GetShortURLByCode(shortURL)
+	if err != nil {
+		log.Printf("[router] Failed to retrieve URL for code %q: %v", shortURL, err)
+		http.Error(w, "failed to retrieve URL", http.StatusInternalServerError)
+		return
+	}
 	if !exists {
 		http.Error(w, "URL not found", http.StatusNotFound)
 		return
@@ -177,7 +195,9 @@ func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
 
 	// Respond to the client with the retrieved URL record.
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(record)
+	if err := json.NewEncoder(w).Encode(record); err != nil {
+		log.Printf("[router] Failed to encode URL response for code %q: %v", shortURL, err)
+	}
 }
 
 // handleRedirectURL handles requests by short code, increments the hit counter via the controller,
@@ -186,19 +206,32 @@ func (s *Server) handleRedirectURL(w http.ResponseWriter, r *http.Request) {
 	// Validate the short code path parameter (guards against reserved words and invalid characters).
 	shortURL := r.PathValue("shortURL")
 	if err := validator.ValidateShortURLParam(shortURL); err != nil {
+		log.Printf("[router] Invalid short URL code in redirect request %q: %v", shortURL, err)
 		http.NotFound(w, r)
 		return
 	}
 
 	// Retrieve the URL record using the controller.
-	key, record, exists := s.controller.GetShortURLByCode(shortURL)
+	key, record, exists, err := s.controller.GetShortURLByCode(shortURL)
+	if err != nil {
+		log.Printf("[router] Failed to retrieve URL for redirect code %q: %v", shortURL, err)
+		http.Error(w, "failed to retrieve URL", http.StatusInternalServerError)
+		return
+	}
 	if !exists {
 		http.Error(w, "URL not found", http.StatusNotFound)
 		return
 	}
 
 	// Increment the hit counter in a thread-safe manner via the controller.
-	s.controller.IncrementShortURLHits(key)
+	if _, exists, err := s.controller.IncrementShortURLHits(key); err != nil {
+		log.Printf("[router] Failed to increment hits for code %q: %v", shortURL, err)
+		http.Error(w, "failed to update URL hit count", http.StatusInternalServerError)
+		return
+	} else if !exists {
+		http.Error(w, "URL not found", http.StatusNotFound)
+		return
+	}
 
 	// Perform the HTTP 302 redirection to the original URL.
 	http.Redirect(w, r, record.URL, http.StatusFound)
@@ -216,5 +249,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	// Respond to the client with the health check payload.
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("[router] Failed to encode health response: %v", err)
+	}
 }

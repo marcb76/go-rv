@@ -1,8 +1,8 @@
 name: CI/CD Pipeline - go-rv!
 
-# WARNING: This pipeline requires GitHub Secrets (DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD, 
-# AWS_EC2_HOST, AWS_EC2_USER, AWS_SSH_PRIVATE_KEY and GEMINI_API_KEY) to be properly configured 
-# in the repository settings before running, otherwise deployment will fail.
+# WARNING: Configure the required GitHub Secrets (DOCKERHUB_USERNAME,
+# DOCKERHUB_PASSWORD, AWS_EC2_HOST, AWS_EC2_USER, AWS_SSH_PRIVATE_KEY,
+# GEMINI_API_KEY, and MONGODB_PASSWORD) before running this workflow.
 
 on:
   push:
@@ -50,11 +50,12 @@ jobs:
       uses: appleboy/ssh-action@master
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
       with:
         host: ${{ secrets.AWS_EC2_HOST }}
         username: ${{ secrets.AWS_EC2_USER }}
         key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
-        envs: GEMINI_API_KEY
+        envs: GEMINI_API_KEY,MONGODB_PASSWORD
         script: |
           # Stop and remove the old container if it exists
           docker stop go-rv-app || true
@@ -68,5 +69,6 @@ jobs:
             --name go-rv-app \
             -p 8080:8080 \
             -e GEMINI_API_KEY \
+            -e MONGODB_PASSWORD \
             --restart always \
             ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest

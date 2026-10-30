@@ -10,13 +10,29 @@ import (
 	"time"
 
 	"go-rv/internal/router"
+	"go-rv/internal/storage"
 )
 
 // main initializes dependencies, sets up the server, and handles graceful shutdown.
 func main() {
 	// Initialize the server with dependencies and register routes
 	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
-	srv := router.NewServer(AppName, Version, ServerScheme, ServerHost, ServerPort, geminiAPIKey, CreateURLRateLimit)
+	mongoPassword := os.Getenv(MongoDBPasswordEnv)
+	connectCtx, cancelConnect := context.WithTimeout(context.Background(), 10*time.Second)
+	store, err := storage.NewMongoStore(connectCtx, MongoDBServer, MongoDBUsername, mongoPassword, MongoDBName, MongoDBCollection)
+	cancelConnect()
+	if err != nil {
+		log.Fatalf("[main.go] Failed to initialize MongoDB: %v", err)
+	}
+	defer func() {
+		closeCtx, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelClose()
+		if err := store.Close(closeCtx); err != nil {
+			log.Printf("[main.go] Failed to disconnect from MongoDB: %v", err)
+		}
+	}()
+
+	srv := router.NewServer(AppName, Version, ServerScheme, ServerHost, ServerPort, geminiAPIKey, CreateURLRateLimit, store)
 	handler := srv.RegisterRoutes()
 
 	// Define server address and configuration (using your existing configuration constants)

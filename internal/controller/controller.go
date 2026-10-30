@@ -17,7 +17,7 @@ import (
 // metadata enrichment, and repository coordination.
 type ShortURLController struct {
 	createMu sync.Mutex
-	store    *storage.MemoryStore
+	store    storage.Store
 	gemini   *service.GeminiService
 	scheme   string
 	host     string
@@ -25,7 +25,7 @@ type ShortURLController struct {
 }
 
 // NewShortURLController creates a new instance of ShortURLController with its required dependencies.
-func NewShortURLController(store *storage.MemoryStore, gemini *service.GeminiService, scheme, host, port string) *ShortURLController {
+func NewShortURLController(store storage.Store, gemini *service.GeminiService, scheme, host, port string) *ShortURLController {
 	return &ShortURLController{
 		store:  store,
 		gemini: gemini,
@@ -44,7 +44,9 @@ func (c *ShortURLController) CreateShortURL(longURL string) (*storage.URLRecord,
 	}
 
 	// Avoid repeating the Gemini request when this normalized URL already exists.
-	if existing, exists := c.store.Get(key); exists {
+	if existing, exists, err := c.store.Get(key); err != nil {
+		return nil, false, fmt.Errorf("get existing URL record: %w", err)
+	} else if exists {
 		return existing, false, nil
 	}
 
@@ -65,7 +67,9 @@ func (c *ShortURLController) CreateShortURL(longURL string) (*storage.URLRecord,
 	// Serialize the final check and insert so concurrent requests cannot add duplicate URLs.
 	c.createMu.Lock()
 	defer c.createMu.Unlock()
-	if existing, exists := c.store.Get(key); exists {
+	if existing, exists, err := c.store.Get(key); err != nil {
+		return nil, false, fmt.Errorf("get existing URL record: %w", err)
+	} else if exists {
 		return existing, false, nil
 	}
 
@@ -93,7 +97,9 @@ func (c *ShortURLController) CreateShortURL(longURL string) (*storage.URLRecord,
 			return nil, false, fmt.Errorf("store URL record: %w", err)
 		}
 		if !added {
-			if existing, exists := c.store.Get(key); exists {
+			if existing, exists, err := c.store.Get(key); err != nil {
+				return nil, false, fmt.Errorf("get existing URL record: %w", err)
+			} else if exists {
 				return existing, false, nil
 			}
 			return nil, false, fmt.Errorf("store URL record: key %q already exists", key)
@@ -103,32 +109,36 @@ func (c *ShortURLController) CreateShortURL(longURL string) (*storage.URLRecord,
 }
 
 // ListShortURLs returns all records indexed by their short code.
-func (c *ShortURLController) ListShortURLs() map[string]storage.URLRecord {
+func (c *ShortURLController) ListShortURLs() (map[string]storage.URLRecord, error) {
 	byCode := make(map[string]storage.URLRecord)
-	for _, record := range c.store.All() {
+	records, err := c.store.All()
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
 		byCode[record.Code] = record
 	}
-	return byCode
+	return byCode, nil
 }
 
 // GetShortURL retrieves a copy of the URL record by its map key.
-func (c *ShortURLController) GetShortURL(key string) (*storage.URLRecord, bool) {
+func (c *ShortURLController) GetShortURL(key string) (*storage.URLRecord, bool, error) {
 	return c.store.Get(key)
 }
 
 // GetShortURLByShortURL retrieves the map key and a copy of the record by its complete short URL.
-func (c *ShortURLController) GetShortURLByShortURL(shortURL string) (string, *storage.URLRecord, bool) {
+func (c *ShortURLController) GetShortURLByShortURL(shortURL string) (string, *storage.URLRecord, bool, error) {
 	return c.store.GetByShortURL(shortURL)
 }
 
 // GetShortURLByCode retrieves the map key and a copy of the record by its short code.
-func (c *ShortURLController) GetShortURLByCode(code string) (string, *storage.URLRecord, bool) {
+func (c *ShortURLController) GetShortURLByCode(code string) (string, *storage.URLRecord, bool, error) {
 	return c.store.GetByCode(code)
 }
 
 // IncrementShortURLHits atomically increments the hit counter for the record at key
 // and returns a copy of the updated record.
-func (c *ShortURLController) IncrementShortURLHits(key string) (*storage.URLRecord, bool) {
+func (c *ShortURLController) IncrementShortURLHits(key string) (*storage.URLRecord, bool, error) {
 	return c.store.IncrementHits(key)
 }
 

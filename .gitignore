@@ -17,6 +17,9 @@ assets/certs/
 # Gemini API key
 /assets/gemini/gemini_api.key
 
+# MongoDB password
+/assets/mongo/db_password
+
 # Local environment configuration files
 still-to-do.md
 still-to-do.pdf
