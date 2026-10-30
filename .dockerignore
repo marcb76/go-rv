@@ -2,24 +2,25 @@
 # OS Environment specific files to ignore
 .DS_Store
 
-# Git and build artifacts to ignore
+# Git and build artifacts
 .git
 .github
 .gitignore
 .dockerignore
 
-# Executable and test files to ignore
+# Executable and test files
 *.exe
 *.out
 *.test
 run.sh
 
-# Documentation files to ignore
+# Documentation files
 README.pdf
 
-# SSL certificates to ignore
+# SSL certificates
 assets/certs/
 *.pem
+*.key
 
 # Gemini API key
-/assets/gemini/gemini_api_key.txt
+/assets/gemini/gemini_api.key

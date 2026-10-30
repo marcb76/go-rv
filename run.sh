@@ -5,7 +5,7 @@
 # Usage: ./run.sh [--noRun]
 
 # Defines
-KEY_FILE="assets/gemini/gemini_api_key.txt"
+KEY_FILE="assets/gemini/gemini_api.key"
 
 
 

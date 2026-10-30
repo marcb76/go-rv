@@ -6,13 +6,13 @@ This microservice was designed and built from scratch in a single day to demonst
 
 ---
 
-## 📋 Executive Summary
+## 📝 Executive Summary
 
 **`go-rv!`** is a high-performance, concurrent, in-memory URL shortener and routing microservice built entirely from scratch using **Go**. As a technical Proof of Concept (PoC), it showcases enterprise backend engineering practices, thread-safe memory management without heavy external framework overhead, and intelligent metadata enrichment powered by the **Gemini API**.
 
 ---
 
-## 🏗️ Core Architecture & Data Model
+## 🧩 Core Architecture & Data Model
 
 The application bypasses traditional database latency by leveraging Go's native primitives for maximum throughput and near-zero latency storage.
 
@@ -29,7 +29,7 @@ The in-memory repository relies on a standard Go `map[string]URLRecord` protecte
 
 ---
 
-## 🗺️ API Contract (Endpoints)
+## 🔌 API Contract (Endpoints)
 
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |

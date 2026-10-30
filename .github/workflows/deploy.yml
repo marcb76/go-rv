@@ -46,15 +46,15 @@ jobs:
         tags: ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
 
     # 6. Deploy to AWS EC2 via SSH
-    # NOTE: This step assumes that the SSL certificates (*.pem) have been 
-    # manually and securely placed beforehand at '/opt/go-rv/assets/certs/' 
-    # on the AWS EC2 instance.
     - name: Deploy to AWS EC2
       uses: appleboy/ssh-action@master
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       with:
         host: ${{ secrets.AWS_EC2_HOST }}
         username: ${{ secrets.AWS_EC2_USER }}
         key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+        envs: GEMINI_API_KEY
         script: |
           # Stop and remove the old container if it exists
           docker stop go-rv-app || true
@@ -63,11 +63,10 @@ jobs:
           # Pull the latest version from Docker Hub
           docker pull ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
 
-          # Run the new container mapping ports and mounting the pre-existing 
-          # local SSL certificates from the AWS host into the container
+          # Run the new container mapping ports and setting environment variables
           docker run -d \
             --name go-rv-app \
             -p 8080:8080 \
-            -e GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+            -e GEMINI_API_KEY \
             --restart always \
             ${{ secrets.DOCKERHUB_USERNAME }}/go-rv:latest
