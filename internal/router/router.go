@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"math"
 	"net/http"
 	"strconv"
@@ -55,210 +56,60 @@ func (s *Server) RegisterRoutes() http.Handler {
 }
 
 // --- Handlers ---
-// handleWelcome processes root requests and returns an interactive HTML welcome page with API route shortcuts.
+var welcomePage = template.Must(template.New("welcome").Parse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#111827">
+<title>{{.Name}} - URL Shortener</title>
+<style>
+:root{--bg-color:#0f172a;--card-bg:#1e293b;--accent-color:#38bdf8;--accent-hover:#0ea5e9;--text-main:#f8fafc;--text-muted:#94a3b8;--border-color:#334155;color-scheme:dark;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;background:var(--bg-color);color:var(--text-main)}*{box-sizing:border-box}body{margin:0;padding:2rem;display:flex;justify-content:center;align-items:center;min-height:100vh}
+main{max-width:900px;width:100%;padding:2.5rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 10px 25px -5px rgba(0,0,0,.3)}
+header{margin-bottom:2rem}h1{margin:0 0 .5rem;color:var(--accent-color);font-size:2.2rem}.subtitle{margin-top:0;color:var(--text-muted);font-size:1.1rem}
+section{margin-top:2rem}h2{padding-bottom:.5rem;border-bottom:1px solid var(--border-color);color:var(--text-main);font-size:1.17rem}p{line-height:1.7}
+.endpoint-list{padding-left:1.2rem;color:var(--text-muted)}.endpoint-list li{margin-bottom:.5rem;line-height:1.55}.endpoint-list strong{color:var(--text-main)}a{color:var(--accent-color);font-weight:600;text-decoration:none}a:hover{color:var(--accent-hover);text-decoration:underline}
+code,.method{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.method{color:var(--accent-color);font-weight:700}.method.post{color:#34d399}.endpoint-description{color:var(--text-muted)}
+form{display:flex;flex-wrap:wrap;gap:1rem;margin-top:1rem}label{display:block;width:100%;color:var(--text-muted);line-height:1.6}
+input{flex:1 1 360px;min-width:0;padding:.75rem 1rem;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-color);color:var(--text-main);font:inherit}input:focus{outline:2px solid var(--accent-color);outline-offset:1px}
+button{padding:.75rem 1.5rem;border:0;border-radius:6px;background:var(--accent-color);color:var(--bg-color);font:inherit;font-weight:700;cursor:pointer;transition:background .2s}button:hover{background:var(--accent-hover)}button:disabled{cursor:wait;opacity:.65}
+pre{display:none;overflow-x:auto;margin:1rem 0 0;padding:1rem;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-color);color:var(--text-main);font:.9rem monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+footer{margin-top:2.5rem;padding-top:1.5rem;border-top:1px solid var(--border-color);color:var(--text-muted);text-align:center;font-size:.85rem}
+@media(max-width:640px){body{padding:1rem}main{padding:1.5rem}h1{font-size:1.9rem}button{width:100%}}
+</style>
+</head>
+<body><main>
+<header><h1>{{.Name}}</h1><p class="subtitle">AI-assisted URL shortening, powered by Go and Gemini</p></header>
+<section><h2>About the Project</h2><p><strong>{{.Name}}</strong> is a lightweight URL shortener built in Go. It creates compact links, enriches them with AI-generated metadata, and tracks redirects with a concurrency-safe in-memory store.</p></section>
+<section><h2>Direct Links (GET Endpoints)</h2><ul class="endpoint-list">
+<li><a href="/health" target="_blank"><span class="method">GET /health</span></a> - Service health and uptime.</li>
+<li><a href="/api/url" target="_blank"><span class="method">GET /api/url</span></a> - List all shortened URLs.</li>
+<section><h2>Parameterized Endpoints</h2><ul class="endpoint-list">
+<li><strong>GET /api/url/{shortURL}</strong> - Retrieve a link's details.</li>
+<li><strong>GET /{shortURL}</strong> - Redirect to the original destination.</li>
+<li><strong>POST /api/url</strong> - Create a short link (limit: {{.RateLimit}} requests per minute).</li>
+<section><h2>Quick URL Creator (POST /api/url)</h2><form id="createForm">
+<label for="longUrl">Enter the destination URL to shorten:</label><input id="longUrl" name="url" type="url" placeholder="https://example.com/article" required>
+<button id="createButton" type="submit">Create Short URL</button></form><pre id="createResult" role="status" aria-live="polite"></pre></section>
+<footer>Version {{.Version}} - Copyright (c) 2026 Marc Bonet Bretto. All rights reserved.</footer>
+</main><script>
+const form=document.getElementById('createForm'),button=document.getElementById('createButton'),result=document.getElementById('createResult');
+form.addEventListener('submit',async(event)=>{event.preventDefault();button.disabled=true;result.style.display='block';result.textContent='Creating short URL...';
+try{const response=await fetch('/api/url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:document.getElementById('longUrl').value.trim()})});
+const body=await response.json();result.textContent=JSON.stringify(body,null,2)}catch(error){result.textContent='Request failed: '+error.message}finally{button.disabled=false}});
+</script></body></html>`))
+
+// handleWelcome serves the project overview and interactive API landing page.
 func (s *Server) handleWelcome(w http.ResponseWriter, r *http.Request) {
-	// Prevent root catch-all from capturing short codes or other registered paths
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-
-	// Generate the HTML content for the welcome page with interactive sections and improved width/footer.
-	html := `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>` + s.name + `</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f8fafc;
-            color: #1e293b;
-            text-align: center;
-            padding: 40px 20px;
-            margin: 0;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: #ffffff;
-            padding: 30px 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            text-align: left;
-            box-sizing: border-box;
-        }
-        h1 {
-            color: #2563eb;
-            margin-bottom: 5px;
-            text-align: center;
-        }
-        .subtitle {
-            color: #64748b;
-            font-size: 1rem;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        h3 {
-            border-bottom: 2px solid #e2e8f0;
-            padding-bottom: 6px;
-            margin-top: 25px;
-            color: #334155;
-            font-size: 1.1rem;
-        }
-        .route-group {
-            background: #f1f5f9;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .route-info {
-            font-family: monospace;
-            font-size: 0.9rem;
-        }
-        .method {
-            font-weight: bold;
-            padding: 2px 6px;
-            border-radius: 4px;
-            color: #fff;
-            margin-right: 6px;
-            font-size: 0.75rem;
-        }
-        .get { background-color: #10b981; }
-        .post { background-color: #3b82f6; }
-        
-        button, a.btn {
-            background-color: #2563eb;
-            color: white;
-            padding: 6px 14px;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: background 0.2s;
-        }
-        button:hover, a.btn:hover {
-            background-color: #1d4ed8;
-        }
-        input[type="text"] {
-            padding: 6px 10px;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            width: 180px;
-        }
-        .form-row {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #e2e8f0;
-            color: #64748b;
-            font-size: 0.85rem;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>` + s.name + `</h1>
-        <div class="subtitle">Version ` + s.version + ` — Server is up, running, and ready.</div>
-
-        <h3>System Status</h3>
-        <div class="route-group">
-            <div class="route-info"><span class="method get">GET</span>/health</div>
-            <a href="/health" target="_blank" class="btn">Test Health</a>
-        </div>
-
-        <h3>URL Management</h3>
-        <div class="route-group">
-            <div class="route-info"><span class="method get">GET</span>/api/url</div>
-            <a href="/api/url" target="_blank" class="btn">List All URLs</a>
-        </div>
-
-        <div class="route-group">
-            <div class="route-info"><span class="method get">GET</span>/api/url/{shortURL}</div>
-            <div class="form-row">
-                <input type="text" id="shortCodeInput" placeholder="e.g. 08e2bc">
-                <button onclick="openParamRoute('api')">Get Details</button>
-            </div>
-        </div>
-
-        <div class="route-group">
-            <div class="route-info"><span class="method get">GET</span>/{shortURL} (Redirect)</div>
-            <div class="form-row">
-                <input type="text" id="redirectCodeInput" placeholder="e.g. 08e2bc">
-                <button onclick="openParamRoute('redirect')">Go / Redirect</button>
-            </div>
-        </div>
-
-        <h3>Create Short URL (with Gemini AI)</h3>
-        <div class="route-group" style="flex-direction: column; align-items: stretch;">
-            <div class="form-row" style="width: 100%; margin-bottom: 8px;">
-                <input type="text" id="longUrlInput" placeholder="https://mbonet.xyz" style="flex-grow: 1; width: auto;">
-                <button onclick="createURL()" style="background-color: #059669;">POST /api/url</button>
-            </div>
-            <pre id="createResult" style="background: #1e293b; color: #38bdf8; padding: 12px; border-radius: 6px; font-size: 0.8rem; overflow-x: auto; display: none; margin: 0; width: 100%; box-sizing: border-box;"></pre>
-        </div>
-
-        <div class="footer">
-            &copy; Marc Bonet 2026. All rights reserved.
-        </div>
-    </div>
-
-    <script>
-        function openParamRoute(type) {
-            let val = '';
-            if (type === 'api') {
-                val = document.getElementById('shortCodeInput').value.trim();
-                if (val) window.open('/api/url/' + val, '_blank');
-            } else if (type === 'redirect') {
-                val = document.getElementById('redirectCodeInput').value.trim();
-                if (val) window.open('/' + val, '_blank');
-            }
-        }
-
-        async function createURL() {
-            const url = document.getElementById('longUrlInput').value.trim();
-            const resultBox = document.getElementById('createResult');
-            if (!url) return;
-
-            resultBox.style.display = 'block';
-            resultBox.textContent = 'Processing with Gemini AI...';
-
-            try {
-                const response = await fetch('/api/url', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: url })
-                });
-                const data = await response.json();
-                resultBox.textContent = JSON.stringify(data, null, 2);
-            } catch (err) {
-                resultBox.textContent = 'Error: ' + err.message;
-            }
-        }
-    </script>
-</body>
-</html>
-`
-
-	// Respond to the client with the HTML welcome page.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(html))
+	if err := welcomePage.Execute(w, struct {
+		Name, Version string
+		RateLimit     int
+	}{Name: s.name, Version: s.version, RateLimit: s.createRateLimiter.limit}); err != nil {
+		http.Error(w, "failed to render welcome page", http.StatusInternalServerError)
+	}
 }
 
 // handleCreateURL creates a short URL or returns the existing one for a duplicate destination.
