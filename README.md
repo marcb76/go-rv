@@ -20,7 +20,7 @@ The project demonstrates a simple URL-shortening service with a clear division o
 * **HTTP API:** Go's standard `net/http` package exposes endpoints for creating, listing, looking up, and redirecting short links.
 * **Business logic:** A controller normalizes destination URLs, reuses existing records, generates unique codes, and requests metadata from Gemini.
 * **Persistence:** A storage interface separates the controller from its storage implementation. MongoDB Atlas provides persistent storage in the deployed application; a concurrency-safe in-memory implementation is also available.
-* **Operational safeguards:** Short-code uniqueness, atomic hit increments, a global creation rate limit, startup checks, and graceful HTTP shutdown.
+* **Operational safeguards:** Short-code uniqueness, atomic hit increments, a process-wide creation rate limit, startup checks, and graceful HTTP shutdown.
 
 ---
 
@@ -28,7 +28,7 @@ The project demonstrates a simple URL-shortening service with a clear division o
 
 * **Language and HTTP server:** Go 1.27, using the standard library.
 * **Database:** MongoDB Atlas with the official MongoDB Go driver v2.
-* **AI metadata:** Gemini API. The service sends the API key in the `x-goog-api-key` request header, not in the URL.
+* **AI metadata:** Gemini API with its URL Context tool, which retrieves public page content for analysis. The API key is sent in the `x-goog-api-key` request header, not in the URL.
 * **Containerization:** Multi-stage Docker build with a small Alpine runtime image.
 * **CI/CD:** GitHub Actions builds and pushes the image to Docker Hub, then deploys it to AWS EC2 over SSH.
 
@@ -38,7 +38,7 @@ The project demonstrates a simple URL-shortening service with a clear division o
 
 ```text
                          HTTPS
- [ Browser / API Client ] ───────────────┐
+ [ Browser / API Client ] ──────────────┐
                                         ▼
                               [ AWS TLS Termination ]
                                         │ HTTP :8080
@@ -46,13 +46,13 @@ The project demonstrates a simple URL-shortening service with a clear division o
                            ┌────────────────────────┐
                            │ go-rv! container (Go)  │
                            │                        │
-                           │ Router → Controller    │──────► [ Gemini API ]
-                           │             │          │          URL metadata
-                           └─────────────┼──────────┘
-                                         │
+                           │ Router → Controller    │──────► [  Gemini API  ]
+                           │            │           │          URL metadata
+                           └────────────┼───────────┘
+                                        │
                             Store interface (production)
-                                         │
-                                         ▼
+                                        │
+                                        ▼
                            [ MongoDB Atlas: short_urls ]
 ```
 
@@ -134,14 +134,14 @@ Each MongoDB document in `go-rv.short_urls` represents a shortened destination. 
 * **Duplicate destinations:** The controller generates a normalized key and returns the existing record when that key is already stored. HTTP/HTTPS schemes, conventional ports, trailing slashes, and letter case are normalized for duplicate comparison.
 * **Unique short codes:** Codes are generated from cryptographically random bytes. MongoDB enforces uniqueness with an index; the controller retries if a generated code collides.
 * **Hit counting:** MongoDB increments `hits` atomically. The in-memory store protects the increment with a write lock. Both return a copy of the updated record.
-* **Metadata:** Gemini receives the submitted URL as prompt text and returns a description and tags. The service does not fetch or crawl the destination website itself.
+* **Metadata:** Gemini's [URL Context tool](https://ai.google.dev/gemini-api/docs/generate-content/url-context) retrieves and reads the submitted page, then generates a description and tags from its content. If retrieval is unsuccessful, link creation fails instead of falling back to guesses based on the URL. The page must be publicly accessible; login-protected and private-network destinations cannot be retrieved.
 
 ---
 
 ## 🔄 Request Flow
 
 1. A client submits a destination URL to `POST /api/url`.
-2. The router validates the JSON request and enforces the global limit of 10 creation requests per rolling minute.
+2. The router validates the JSON request and enforces the instance-wide limit of 10 creation requests per rolling minute.
 3. The controller checks MongoDB for an existing normalized destination. If one exists, it returns that record without making another Gemini request.
 4. For a new destination, Gemini generates a description and tags. The controller creates a unique short code and stores the record.
 5. A request to `/{code}` atomically increments the hit count and redirects the client to the destination with HTTP `302 Found`.
@@ -159,7 +159,7 @@ Each MongoDB document in `go-rv.short_urls` represents a shortened destination. 
 | `GET` | `/api/url/{code}` | Retrieves a record by its short code. |
 | `GET` | `/{code}` | Increments the hit count and redirects to the original URL. |
 
-Creation requests are limited globally to 10 per rolling minute. Excess requests receive `429 Too Many Requests` and a `Retry-After` header.
+Creation requests are limited to 10 per rolling minute across all callers of this application process. The counter is held in memory, resets when the process restarts, and is not shared across multiple replicas. Excess requests receive `429 Too Many Requests` and a `Retry-After` header.
 
 ---
 
@@ -179,7 +179,7 @@ The service listens on `0.0.0.0:8080`. Open `http://localhost:8080/` to use the 
 
 The Dockerfile compiles a static Linux binary in a Go builder stage and copies it into an Alpine runtime image. The container exposes port `8080` and expects `GEMINI_API_KEY` and `MONGODB_PASSWORD` at runtime.
 
-The workflow in `.github/workflows/deploy.yml` runs on pushes to `main` or by manual dispatch. It runs `go test -v ./...`, builds and pushes the `latest` image to Docker Hub, then connects to AWS EC2 over SSH to replace and start the `go-rv-app` container. The container port is mapped to host port `8080`; HTTPS is handled by the AWS layer in front of it.
+The workflow in `.github/workflows/deploy.yml` runs on pushes to `main` or by manual dispatch. It invokes `go test -v ./...`; there are currently no Go test files, so this step does not yet exercise automated tests. The workflow then builds and pushes the `latest` image to Docker Hub and connects to AWS EC2 over SSH to replace and start the `go-rv-app` container. The container port is mapped to host port `8080`; HTTPS is handled by the AWS layer in front of it.
 
 ---
 
@@ -188,11 +188,15 @@ The workflow in `.github/workflows/deploy.yml` runs on pushes to `main` or by ma
 ```text
 go-rv!/
 ├── .github/workflows/deploy.yml  # Build and deploy pipeline
+├── .dockerignore                 # Excludes local secrets from Docker builds
+├── .gitignore                    # Excludes local credentials and generated files
 ├── config.go                     # Service and MongoDB settings
 ├── Dockerfile                    # Multi-stage container build
 ├── go.mod                        # Go module and MongoDB driver dependency
 ├── go.sum                        # Dependency checksums
+├── LICENSE
 ├── main.go                       # MongoDB initialization and HTTP server lifecycle
+├── README.md
 ├── run.sh                        # Local credential loading, build, and run
 └── internal/
     ├── controller/               # URL normalization, code generation, business logic
