@@ -15,7 +15,7 @@ import (
 type Server struct {
 	name       string
 	version    string
-	controller *controller.URLController
+	controller *controller.ShortURLController
 	started    time.Time
 }
 
@@ -24,7 +24,7 @@ func NewServer(name, version, scheme, host, port, geminiAPIKey string) *Server {
 	// Initialize the business controller with HTTP scheme, host, and port parameters
 	store := storage.NewMemoryStore()
 	gemini := service.NewGeminiService(geminiAPIKey)
-	controller := controller.NewURLController(store, gemini, scheme, host, port)
+	controller := controller.NewShortURLController(store, gemini, scheme, host, port)
 
 	return &Server{
 		name:       name,
@@ -41,11 +41,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	// Add routes based on the API contract
 	mux.HandleFunc("GET /", s.handleWelcome)
-	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /api/url", s.handleCreateURL)
 	mux.HandleFunc("GET /api/url", s.handleListURLs)
 	mux.HandleFunc("GET /api/url/{shortURL}", s.handleGetURL)
-	mux.HandleFunc("GET /{shortURL}", s.handleRedirect)
+	mux.HandleFunc("GET /{shortURL}", s.handleRedirectURL)
+	mux.HandleFunc("GET /health", s.handleHealth)
 	return mux
 }
 
@@ -256,21 +256,6 @@ func (s *Server) handleWelcome(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
-// handleHealth processes infrastructure monitoring requests
-// and returns the service status, timestamp, and uptime.
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	// Generate the health check response payload.
-	response := map[string]interface{}{
-		"status":    "healthy",
-		"timestamp": time.Now().UTC(),
-		"uptime":    time.Since(s.started).String(),
-	}
-
-	// Respond to the client with the health check payload.
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
 // handleCreateURL processes JSON body requests to create and AI-enrich a new short URL.
 func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
 	// Validate and decode the JSON request body using the validator package.
@@ -296,7 +281,7 @@ func (s *Server) handleCreateURL(w http.ResponseWriter, r *http.Request) {
 // handleListURLs handles global audit requests, returning all registered records.
 func (s *Server) handleListURLs(w http.ResponseWriter, r *http.Request) {
 	// Retrieve all URL records through the controller.
-	records := s.controller.ListURLs()
+	records := s.controller.ListShortURLs()
 
 	// Respond to the client with the list of all URL records.
 	w.Header().Set("Content-Type", "application/json")
@@ -314,7 +299,7 @@ func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve the URL record using the controller.
-	record, exists := s.controller.GetURL(shortURL)
+	_, record, exists := s.controller.GetShortURLByCode(shortURL)
 	if !exists {
 		http.Error(w, "URL not found", http.StatusNotFound)
 		return
@@ -325,9 +310,9 @@ func (s *Server) handleGetURL(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(record)
 }
 
-// handleRedirect intercepts short URL requests, validates the code, increments the hit counter via controller,
+// handleRedirectURL intercepts short URL requests, validates the code, increments the hit counter via controller,
 // and performs an HTTP 302 redirection to the original destination.
-func (s *Server) handleRedirect(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRedirectURL(w http.ResponseWriter, r *http.Request) {
 	// Validate the short URL path parameter (guards against reserved words and invalid characters)
 	shortURL := r.PathValue("shortURL")
 	if err := validator.ValidateShortURLParam(shortURL); err != nil {
@@ -336,15 +321,30 @@ func (s *Server) handleRedirect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve the URL record using the controller.
-	record, exists := s.controller.GetURL(shortURL)
+	key, record, exists := s.controller.GetShortURLByCode(shortURL)
 	if !exists {
 		http.Error(w, "URL not found", http.StatusNotFound)
 		return
 	}
 
 	// Increment the hit counter in a thread-safe manner via the controller.
-	s.controller.IncrementHits(shortURL)
+	s.controller.IncrementShortURLHits(key)
 
 	// Perform the HTTP 302 redirection to the original URL.
 	http.Redirect(w, r, record.URL, http.StatusFound)
+}
+
+// handleHealth processes infrastructure monitoring requests
+// and returns the service status, timestamp, and uptime.
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	// Generate the health check response payload.
+	response := map[string]interface{}{
+		"status":    "healthy",
+		"timestamp": time.Now().UTC(),
+		"uptime":    time.Since(s.started).String(),
+	}
+
+	// Respond to the client with the health check payload.
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
