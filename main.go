@@ -22,13 +22,13 @@ func main() {
 	store, err := storage.NewMongoStore(connectCtx, MongoDBServer, MongoDBUsername, mongoPassword, MongoDBName, MongoDBCollection)
 	cancelConnect()
 	if err != nil {
-		log.Fatalf("[main.go] Failed to initialize MongoDB: %v", err)
+		log.Fatalf("[main.go      ][main                  ] Failed to initialize MongoDB: %v", err)
 	}
 	defer func() {
 		closeCtx, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelClose()
 		if err := store.Close(closeCtx); err != nil {
-			log.Printf("[main.go] Failed to disconnect from MongoDB: %v", err)
+			log.Printf("[main.go      ][main                  ] Failed to disconnect from MongoDB: %v", err)
 		}
 	}()
 
@@ -51,23 +51,23 @@ func main() {
 
 	// Start the server in a separate goroutine to allow for graceful shutdown
 	go func() {
-		log.Printf("[main.go] External Server running at %s://%s:%s", ServerScheme, ServerHost, ServerPort)
-		log.Printf("[main.go] Internal Server running at %s://%s:%s", InternalServerScheme, InternalServerHost, InternalServerPort)
+		log.Printf("[main.go      ][main                  ] External Server running at %s://%s:%s", ServerScheme, ServerHost, ServerPort)
+		log.Printf("[main.go      ][main                  ] Internal Server running at %s://%s:%s", InternalServerScheme, InternalServerHost, InternalServerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("[main.go] Server failed unexpectedly: %v", err)
+			log.Fatalf("[main.go      ][main                  ] Server failed unexpectedly: %v", err)
 		}
 	}()
 
 	// Wait for an interrupt signal to initiate graceful shutdown
 	sig := <-quit
-	log.Printf("[main.go] Shutdown signal received (%v). Initiating Graceful Shutdown...", sig)
+	log.Printf("[main.go      ][main                  ] Shutdown signal received (%v). Initiating Graceful Shutdown...", sig)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("[main.go] Server was forced to shut down: %v", err)
+		log.Fatalf("[main.go      ][main                  ] Server was forced to shut down: %v", err)
 	}
 
 	// All done... log the final message
-	log.Printf("[main.go] Server stopped gracefully and safely.")
-	log.Printf("[main.go] Have a nice day!")
+	log.Printf("[main.go      ][main                  ] Server stopped gracefully and safely.")
+	log.Printf("[main.go      ][main                  ] Have a nice day!")
 }

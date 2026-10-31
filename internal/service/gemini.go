@@ -34,8 +34,10 @@ type geminiTool struct {
 }
 
 type geminiURLMetadata struct {
-	RetrievedURL       string `json:"retrieved_url"`
-	URLRetrievalStatus string `json:"url_retrieval_status"`
+	RetrievedURLCamel       string `json:"retrievedUrl"`
+	RetrievedURLSnake       string `json:"retrieved_url"`
+	URLRetrievalStatusCamel string `json:"urlRetrievalStatus"`
+	URLRetrievalStatusSnake string `json:"url_retrieval_status"`
 }
 
 // geminiContent represents a container for content parts within a Gemini request.
@@ -50,16 +52,37 @@ type geminiPart struct {
 
 // geminiResponse represents the expected response structure from the Gemini API.
 type geminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-		URLContextMetadata struct {
-			URLMetadata []geminiURLMetadata `json:"url_metadata"`
-		} `json:"url_context_metadata"`
-	} `json:"candidates"`
+	Candidates []geminiCandidate `json:"candidates"`
+}
+
+type geminiCandidate struct {
+	Content struct {
+		Parts []struct {
+			Text string `json:"text"`
+		} `json:"parts"`
+	} `json:"content"`
+	URLContextMetadataCamel geminiURLContextMetadata `json:"urlContextMetadata"`
+	URLContextMetadataSnake geminiURLContextMetadata `json:"url_context_metadata"`
+}
+
+type geminiURLContextMetadata struct {
+	URLMetadataCamel []geminiURLMetadata `json:"urlMetadata"`
+	URLMetadataSnake []geminiURLMetadata `json:"url_metadata"`
+}
+
+func (c geminiCandidate) urlMetadata() []geminiURLMetadata {
+	metadata := append([]geminiURLMetadata(nil), c.URLContextMetadataCamel.URLMetadataCamel...)
+	metadata = append(metadata, c.URLContextMetadataCamel.URLMetadataSnake...)
+	metadata = append(metadata, c.URLContextMetadataSnake.URLMetadataCamel...)
+	metadata = append(metadata, c.URLContextMetadataSnake.URLMetadataSnake...)
+	return metadata
+}
+
+func (m geminiURLMetadata) retrievalStatus() string {
+	if m.URLRetrievalStatusCamel != "" {
+		return m.URLRetrievalStatusCamel
+	}
+	return m.URLRetrievalStatusSnake
 }
 
 // AIMetadata represents the structured metadata extracted by the AI model.
@@ -72,6 +95,7 @@ type AIMetadata struct {
 func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 	// Return an error immediately if the API key is missing instead of falling back.
 	if s.apiKey == "" {
+		log.Printf("[gemini.go    ][AnalyzeURL            ] Invalid configuration: GEMINI_API_KEY is not configured")
 		return "", nil, fmt.Errorf("GEMINI_API_KEY is not configured")
 	}
 
@@ -107,54 +131,59 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 	// Marshal the request body into JSON format for the HTTP POST request.
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", nil, err
+		log.Printf("[gemini.go    ][AnalyzeURL            ] Error marshaling gemini request: %v", err)
+		return "", nil, fmt.Errorf("error marshaling gemini request: %w", err)
 	}
 
 	// Send the API key as a header so it is not included in URL-based logs.
 	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(jsonBody))
 	if err != nil {
-		return "", nil, err
+		log.Printf("[gemini.go    ][AnalyzeURL            ] Error creating Gemini HTTP request: %v", err)
+		return "", nil, fmt.Errorf("error creating Gemini HTTP request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-goog-api-key", s.apiKey)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Printf("[gemini.go] HTTP request failed: %v", err)
-		return "", nil, err
+		log.Printf("[gemini.go    ][AnalyzeURL            ] Error sending Gemini HTTP request: %v", err)
+		return "", nil, fmt.Errorf("error sending Gemini HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Check if the response status code indicates an error before attempting to decode the response body.
 	if resp.StatusCode != http.StatusOK {
 		errorBodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("[gemini.go] Error response received. Status: %d, Body: %s", resp.StatusCode, string(errorBodyBytes))
-		return "", nil, fmt.Errorf("gemini api returned status: %d", resp.StatusCode)
+		log.Printf("[gemini.go    ][AnalyzeURL            ] Invalid Gemini response. Status %d: %s", resp.StatusCode, strings.TrimSpace(string(errorBodyBytes)))
+		return "", nil, fmt.Errorf("invalid Gemini response. Status	%d: %s", resp.StatusCode, strings.TrimSpace(string(errorBodyBytes)))
 	}
 
 	// Decode the JSON response from the Gemini API into the geminiResponse struct.
 	var geminiResp geminiResponse
 	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
-		log.Printf("[gemini.go] Failed to decode JSON response: %v", err)
-		return "", nil, err
+		log.Printf("[gemini.go    ][AnalyzeURL            ] Error decoding Gemini API response: %v", err)
+		return "", nil, fmt.Errorf("error decoding Gemini API response: %w", err)
 	}
 
 	// Check if the response contains any candidates and parts; if not, return an error.
 	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return "", nil, fmt.Errorf("empty response from gemini")
+		log.Printf("[gemini.go    ][AnalyzeURL            ] Invalid Gemini response: empty candidates or parts")
+		return "", nil, fmt.Errorf("invalid Gemini response: empty candidates or parts")
 	}
-	if !hasSuccessfulURLContext(geminiResp.Candidates[0].URLContextMetadata.URLMetadata) {
-		return "", nil, fmt.Errorf("gemini URL Context did not successfully retrieve page content")
+	candidate := geminiResp.Candidates[0]
+	if !hasSuccessfulURLContext(candidate.urlMetadata()) {
+		log.Printf("[gemini.go    ][AnalyzeURL            ] Invalid Gemini response: URL context did not successfully retrieve page content")
+		return "", nil, fmt.Errorf("invalid Gemini response: URL context did not successfully retrieve page content")
 	}
 
 	// Extract the raw text from the first candidate and clean it from any markdown formatting.
-	rawText := geminiResp.Candidates[0].Content.Parts[0].Text
+	rawText := candidate.Content.Parts[0].Text
 	rawText = cleanMarkdownJSON(rawText)
 
 	// Attempt to unmarshal the cleaned JSON text into the AIMetadata struct and report errors if it fails.
 	var metadata AIMetadata
 	if err := json.Unmarshal([]byte(rawText), &metadata); err != nil {
-		log.Printf("[gemini.go] Failed to parse AI response as JSON. Raw text: %s", rawText)
-		return "", nil, fmt.Errorf("failed to parse AI response as JSON: %v (raw text: %s)", err, rawText)
+		log.Printf("[gemini.go    ][AnalyzeURL            ] Error unmarshaling Gemini metadata JSON: %v", err)
+		return "", nil, fmt.Errorf("error unmarshaling Gemini metadata JSON: %w", err)
 	}
 
 	// Return the extracted description and tags from the AIMetadata struct.
@@ -163,7 +192,7 @@ func (s *GeminiService) AnalyzeURL(targetURL string) (string, []string, error) {
 
 func hasSuccessfulURLContext(metadata []geminiURLMetadata) bool {
 	for _, result := range metadata {
-		if result.URLRetrievalStatus == "URL_RETRIEVAL_STATUS_SUCCESS" {
+		if result.retrievalStatus() == "URL_RETRIEVAL_STATUS_SUCCESS" {
 			return true
 		}
 	}
