@@ -85,7 +85,15 @@ func (c *ShortURLController) CreateShortURL(longURL string) (*storage.URLRecord,
 			return nil, false, fmt.Errorf("error generating short URL code: %w", err)
 		}
 
-		shortURL := c.scheme + "://" + c.host + ":" + c.port + "/" + code
+		portPart := ""
+		if c.port != "" {
+			isStandardPort := (strings.ToLower(c.scheme) == "http" && c.port == "80") ||
+				(strings.ToLower(c.scheme) == "https" && c.port == "443")
+			if !isStandardPort {
+				portPart = ":" + c.port
+			}
+		}
+		shortURL := c.scheme + "://" + c.host + portPart + "/" + code
 		record := &storage.URLRecord{
 			URL:           longURL,
 			ShortURL:      shortURL,
